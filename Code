@@ -1,0 +1,174 @@
+import os
+import random
+import numpy as np
+import matplotlib.pyplot as plt
+train_dir = 'dataset/dataset/dataset/train'
+test_dir = 'dataset/dataset/dataset/test'
+# Train Dataset
+
+#fresh
+fresh_apples_train_dir = os.path.join(train_dir, 'freshapples')
+fresh_banana_train_dir = os.path.join(train_dir, 'freshbanana')
+fresh_oranges_train_dir = os.path.join(train_dir, 'freshoranges')
+
+#rotten
+rotten_apples_train_dir = os.path.join(train_dir, 'rottenapples')
+rotten_banana_train_dir = os.path.join(train_dir, 'rottenbanana')
+rotten_oranges_train_dir = os.path.join(train_dir, 'rottenoranges')
+# Test Dataset
+
+#fresh
+fresh_apples_test_dir = os.path.join(test_dir, 'freshapples')
+fresh_banana_test_dir = os.path.join(test_dir, 'freshbanana')
+fresh_oranges_test_dir = os.path.join(test_dir, 'freshoranges')
+
+#rotten
+rotten_apples_test_dir = os.path.join(test_dir, 'rottenapples')
+rotten_banana_test_dir = os.path.join(test_dir, 'rottenbanana')
+rotten_oranges_test_dir = os.path.join(test_dir, 'rottenoranges')
+print("No. of train fresh apple image : ", len(os.listdir(fresh_apples_train_dir)))
+print("No. of train fresh banana image : ", len(os.listdir(fresh_banana_train_dir)))
+print("No. of train fresh orange image : ", len(os.listdir(fresh_oranges_train_dir)))
+print("No. of train rotten apple image : ", len(os.listdir(rotten_apples_train_dir)))
+print("No. of train rotten banana image : ", len(os.listdir(rotten_banana_train_dir)))
+print("No. of train rotten orange image : ", len(os.listdir(rotten_oranges_train_dir)))
+print("No.of test fresh apple image : ", len(os.listdir(fresh_apples_test_dir)))
+print("No.of test fresh banana image : ", len(os.listdir(fresh_banana_test_dir)))
+print("No.of test fresh orange image : ", len(os.listdir(fresh_oranges_test_dir)))
+print("No.of test rotten apple image : ", len(os.listdir(rotten_apples_test_dir)))
+print("No.of test rotten banana image : ", len(os.listdir(rotten_banana_test_dir)))
+print("No.of test rotten orange image : ", len(os.listdir(rotten_oranges_test_dir)))
+from keras.preprocessing.image import load_img
+
+filename = os.listdir(fresh_apples_train_dir)
+sample = random.choice(filename)
+image = load_img(os.path.join(fresh_apples_train_dir,sample))
+print(image.size)
+plt.imshow(image)
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+from tensorflow.keras.applications import VGG16
+from tensorflow.keras.layers import GlobalAveragePooling2D, AveragePooling2D
+from tensorflow.keras.layers import Dropout
+from tensorflow.keras.layers import Flatten
+from tensorflow.keras.layers import Dense
+from tensorflow.keras.layers import Input
+from tensorflow.keras.models import Model
+from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.utils import to_categorical
+from tensorflow.keras.callbacks import Callback, LearningRateScheduler
+from sklearn.preprocessing import LabelBinarizer
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import classification_report
+from sklearn.metrics import confusion_matrix
+from imutils import paths
+import argparse
+import cv2
+train_datagen = ImageDataGenerator(rescale=1/255,
+                                   rotation_range=15,
+                                   horizontal_flip=True,
+                                   fill_mode='nearest')
+validation_datagen = ImageDataGenerator(rescale=1/255)
+
+train_generator = train_datagen.flow_from_directory(
+                    'dataset/dataset/dataset/train',
+                    target_size = (150,150),
+                    batch_size = 15,
+                    class_mode='categorical')
+
+validation_generator = validation_datagen.flow_from_directory(
+                    'dataset/dataset/dataset/test',
+                    target_size=(150,150),
+                    batch_size= 15,
+                    class_mode='categorical'
+)
+baseModel = VGG16(weights="imagenet",include_top=False, input_tensor=Input(shape=(150,150,3)))
+
+headModel=baseModel.output
+headModel = AveragePooling2D(pool_size=(4, 4))(headModel)
+headModel = Flatten(name="flatten")(headModel)
+headModel = Dense(64, activation="relu")(headModel)
+headModel = Dropout(0.5)(headModel)
+headModel = Dense(6, activation="softmax")(headModel)
+
+model = Model(inputs=baseModel.input,outputs=headModel)
+
+for layer in baseModel.layers: layer.trainable=False
+model.summary()
+model.compile(
+    loss='categorical_crossentropy',
+    optimizer = Adam(learning_rate=1e-3),
+    metrics=["accuracy"]
+)
+history = model.fit(
+    train_generator,
+    validation_data=validation_generator,
+    steps_per_epoch = len(train_generator)//5,
+    validation_steps=len(validation_generator)//5,
+    epochs=5,
+    verbose=1
+)
+acc = history.history['accuracy']
+val_acc = history.history['val_accuracy']
+loss = history.history['loss']
+val_loss = history.history['val_loss']
+epochs = range(len(acc))
+
+plt.plot(epochs,acc,'r', label='Training accuracy')
+plt.plot(epochs,val_acc,'b', label='Validation accuracy')
+plt.title ('Training and validation accuracy')
+plt.legend(loc=0)
+plt.figure()
+
+plt.plot(epochs,loss,label='Training Loss')
+plt.plot(epochs, val_loss, label='Validation loss')
+plt.title('Training and validation loss')
+plt.legend(loc=0)
+result = model.evaluate(validation_generator)
+print('Accuracy: ', result[1])
+from keras.preprocessing.image import img_to_array
+
+names = [fresh_apples_test_dir,
+         fresh_banana_test_dir,
+         fresh_oranges_test_dir,
+         rotten_apples_test_dir,
+         rotten_banana_test_dir,
+         rotten_oranges_test_dir
+]
+name_rand = random.choice(names)
+
+
+filename = os.listdir(name_rand)
+sample = random.choice(filename)
+fn = os.path.join(name_rand,sample)
+print(fn)
+
+
+img = load_img(fn, target_size=(150, 150))
+plt.imshow(img)
+
+
+x = img_to_array(img)
+x = np.expand_dims(x, axis=0)
+images = np.vstack([x])
+classes = model.predict(images, batch_size=10)
+print(classes)
+
+
+prediction = ''
+
+if classes[0][0]==1:
+    prediction = 'fresh apple'
+elif classes[0][1]==1:
+    prediction = 'fresh banana'
+elif classes[0][2]==1:
+    prediction = 'fresh orange'
+elif classes[0][3]==1:
+    prediction = 'rotten apple'
+elif classes[0][4]==1:
+    prediction = 'rotten banana'
+elif classes[0][5]==1:
+    prediction = 'rotten orange'
+
+print(prediction)
+
+
